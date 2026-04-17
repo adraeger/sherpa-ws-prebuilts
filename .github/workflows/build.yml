@@ -28,7 +28,7 @@ jobs:
             lib_glob: "*.dylib"
           - os: windows-latest
             platform: windows
-            upstream_archive_suffix: "win-x64-shared.tar.bz2"
+            upstream_archive_suffix: "win-x64-shared-MD-Release.tar.bz2"
             binary: "sherpa-onnx-offline-websocket-server.exe"
             lib_glob: "*.dll"
           - os: ubuntu-latest
