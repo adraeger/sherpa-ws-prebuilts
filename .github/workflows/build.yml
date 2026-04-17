@@ -124,7 +124,7 @@ jobs:
             artifacts/*.sha256
             SHA256SUMS.txt
           body: |
-            Prebuilt sherpa-onnx WebSocket-Server for Audicap.
+            Repackaged sherpa-onnx WebSocket-Server binaries.
 
             **Upstream:** [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ${{ github.ref_name }}
 
