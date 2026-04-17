@@ -1,0 +1,132 @@
+name: Build sherpa-ws-prebuilts
+
+on:
+  workflow_dispatch:
+    inputs:
+      sherpa_version:
+        description: "sherpa-onnx upstream tag (e.g. v1.12.39)"
+        required: true
+        default: "v1.12.39"
+      build_number:
+        description: "Build counter (increment per rebuild of same upstream)"
+        required: true
+        default: "1"
+  push:
+    tags:
+      - "sherpa-v*-build*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos
+            upstream_archive_suffix: "osx-universal2-shared.tar.bz2"
+            binary: "sherpa-onnx-offline-websocket-server"
+            lib_glob: "*.dylib"
+          - os: windows-latest
+            platform: windows
+            upstream_archive_suffix: "win-x64-shared.tar.bz2"
+            binary: "sherpa-onnx-offline-websocket-server.exe"
+            lib_glob: "*.dll"
+          - os: ubuntu-latest
+            platform: linux
+            upstream_archive_suffix: "linux-x64-shared.tar.bz2"
+            binary: "sherpa-onnx-offline-websocket-server"
+            lib_glob: "*.so*"
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine sherpa_version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sherpa_version=${{ github.event.inputs.sherpa_version }}" >> "$GITHUB_OUTPUT"
+          else
+            # Tag-Push: sherpa-v1.12.39-build1 → v1.12.39
+            TAG="${GITHUB_REF#refs/tags/}"
+            SHERPA_VER="${TAG%-build*}"
+            SHERPA_VER="${SHERPA_VER#sherpa-}"
+            echo "sherpa_version=$SHERPA_VER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download upstream tarball
+        shell: bash
+        run: |
+          VER="${{ steps.version.outputs.sherpa_version }}"
+          ARCHIVE="sherpa-onnx-${VER}-${{ matrix.upstream_archive_suffix }}"
+          URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/${VER}/${ARCHIVE}"
+          echo "Download: $URL"
+          curl -fL "$URL" -o upstream.tar.bz2
+
+      - name: Extract + stage (macOS/Linux)
+        if: matrix.platform != 'windows'
+        run: bash scripts/extract-binary.sh upstream.tar.bz2 "${{ matrix.binary }}" "${{ matrix.lib_glob }}" stage/
+
+      - name: Extract + stage (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/extract-binary.ps1 -Archive upstream.tar.bz2 -Binary "${{ matrix.binary }}" -LibGlob "${{ matrix.lib_glob }}" -OutDir stage
+
+      - name: Ensure executable bit (macOS/Linux)
+        if: matrix.platform != 'windows'
+        run: |
+          chmod +x "stage/${{ matrix.binary }}"
+          find stage -name "${{ matrix.lib_glob }}" -exec chmod +x {} +
+
+      - name: Create tarball + SHA256
+        shell: bash
+        run: |
+          ARTIFACT="sherpa-ws-${{ matrix.platform }}.tar.gz"
+          tar -czf "$ARTIFACT" -C stage .
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -Command "(Get-FileHash $env:ARTIFACT -Algorithm SHA256).Hash.ToLower() + '  ' + '$env:ARTIFACT'" > "$ARTIFACT.sha256"
+          else
+            shasum -a 256 "$ARTIFACT" > "$ARTIFACT.sha256"
+          fi
+          cat "$ARTIFACT.sha256"
+        env:
+          ARTIFACT: "sherpa-ws-${{ matrix.platform }}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sherpa-ws-${{ matrix.platform }}
+          path: |
+            sherpa-ws-*.tar.gz
+            sherpa-ws-*.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Consolidate SHA256SUMS
+        run: |
+          find artifacts -name "*.sha256" -exec cat {} + | sort > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+            SHA256SUMS.txt
+          body: |
+            Prebuilt sherpa-onnx WebSocket-Server for Audicap.
+
+            **Upstream:** [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ${{ github.ref_name }}
+
+            Assets reproduce the official sherpa-onnx release tarballs — see `.github/workflows/build.yml`.

@@ -1,0 +1,12 @@
+sherpa-ws-prebuilts
+Copyright 2026 Audicap Contributors
+
+This product includes software developed by the k2-fsa project
+(https://github.com/k2-fsa/sherpa-onnx).
+
+sherpa-onnx is licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
+
+The binaries in the releases of this repository are extracted unchanged
+from the official sherpa-onnx release tarballs and re-packaged for
+distribution convenience.
