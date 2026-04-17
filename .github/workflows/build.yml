@@ -85,14 +85,9 @@ jobs:
         run: |
           ARTIFACT="sherpa-ws-${{ matrix.platform }}.tar.gz"
           tar -czf "$ARTIFACT" -C stage .
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            powershell -Command "(Get-FileHash $env:ARTIFACT -Algorithm SHA256).Hash.ToLower() + '  ' + '$env:ARTIFACT'" > "$ARTIFACT.sha256"
-          else
-            shasum -a 256 "$ARTIFACT" > "$ARTIFACT.sha256"
-          fi
+          # sha256sum ist auf allen Runnern verfügbar (git-bash auf Windows)
+          sha256sum "$ARTIFACT" > "$ARTIFACT.sha256"
           cat "$ARTIFACT.sha256"
-        env:
-          ARTIFACT: "sherpa-ws-${{ matrix.platform }}.tar.gz"
 
       - uses: actions/upload-artifact@v4
         with:
